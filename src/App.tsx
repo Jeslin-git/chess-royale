@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { ChessBoard } from './components/ChessBoard';
 import { GameInfo } from './components/GameInfo';
+import { GameRulesLegend } from './components/GameRulesLegend';
 import { GameState, Position, Move } from './types/chess';
 import {
   createInitialGameState,
@@ -13,18 +14,22 @@ import {
   processPostMoveEffects
 } from './utils/gameLogic';
 import { generateShrinkBlocks } from './utils/shrinkLogic';
-import { getAllPossibleMoves } from './utils/chessLogic';
+import { getAllPossibleMoves, getLegalMoves, isInCheck } from './utils/chessLogic';
+import { getPowerUpDescription, collectPowerUp, usePowerUp } from './utils/powerupLogic';
 import { useGameTimer } from './hooks/useGameTimer';
-import { RotateCcw, Play, Zap } from 'lucide-react';
+import { RotateCcw, Play, Zap, Shield, Bolt, Target, ArrowRight } from 'lucide-react';
 
 function App() {
   const [gameState, setGameState] = useState<GameState>(createInitialGameState);
   const [selectedSquare, setSelectedSquare] = useState<Position | null>(null);
   const [validMoves, setValidMoves] = useState<Position[]>([]);
   const [eventMessages, setEventMessages] = useState<string[]>([]);
-  const [currentMessage, setCurrentMessage] = useState<string | null>(null);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
   const [messageQueue, setMessageQueue] = useState<string[]>([]);
   const [isScreenShaking, setIsScreenShaking] = useState(false);
+  const [showRulesLegend, setShowRulesLegend] = useState(false);
+  const [showPowerupInstructions, setShowPowerupInstructions] = useState<string | null>(null);
+  const [lastShownMessages, setLastShownMessages] = useState<Set<string>>(new Set());
 
   const triggerScreenShake = useCallback(() => {
     setIsScreenShaking(true);
@@ -32,8 +37,23 @@ function App() {
   }, []);
 
   const showEventMessage = useCallback((message: string) => {
+    // Prevent duplicate messages from spamming
+    if (lastShownMessages.has(message)) {
+      return;
+    }
+    
+    setLastShownMessages(prev => new Set([...prev, message]));
     setMessageQueue(prev => [...prev, message]);
-  }, []);
+    
+    // Clear message from spam prevention after 5 seconds
+    setTimeout(() => {
+      setLastShownMessages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(message);
+        return newSet;
+      });
+    }, 5000);
+  }, [lastShownMessages]);
 
   // Process message queue to show one message at a time
   useEffect(() => {
@@ -137,7 +157,7 @@ function App() {
     if (!selectedSquare) {
       if (piece && piece.color === 'white') {
         setSelectedSquare(position);
-        const moves = getAllPossibleMoves(gameState.board, 'white', gameState.shrunkSquares)
+        const moves = getLegalMoves(gameState.board, 'white', gameState.shrunkSquares)
           .filter(move => move.from.row === position.row && move.from.col === position.col)
           .map(move => move.to);
         setValidMoves(moves);
@@ -162,6 +182,11 @@ function App() {
     if (isValidMoveSquare) {
       const selectedPiece = gameState.board[selectedSquare.row][selectedSquare.col];
       if (selectedPiece) {
+        // Check if moving to a powerup square
+        const powerUpOnSquare = gameState.powerUps.find(
+          p => p.position.row === position.row && p.position.col === position.col
+        );
+
         const move: Move = {
           from: selectedSquare,
           to: position,
@@ -169,7 +194,19 @@ function App() {
           captured: piece || undefined
         };
 
-        const newGameState = makeMove(gameState, move);
+        let newGameState = makeMove(gameState, move);
+        
+        // Collect powerup if present
+        if (powerUpOnSquare) {
+          newGameState = collectPowerUp(newGameState, position, 'white');
+          const description = getPowerUpDescription(powerUpOnSquare.type);
+          showEventMessage(description);
+          setShowPowerupInstructions(description);
+          
+          // Auto-hide powerup instructions after 4 seconds
+          setTimeout(() => setShowPowerupInstructions(null), 4000);
+        }
+        
         const checkedGameState = checkGameOver(newGameState);
         
         // Process turn-based mechanics after each move
@@ -189,7 +226,7 @@ function App() {
       // Select new square if it has a white piece
       if (piece && piece.color === 'white') {
         setSelectedSquare(position);
-        const moves = getAllPossibleMoves(gameState.board, 'white', gameState.shrunkSquares)
+        const moves = getLegalMoves(gameState.board, 'white', gameState.shrunkSquares)
           .filter(move => move.from.row === position.row && move.from.col === position.col)
           .map(move => move.to);
         setValidMoves(moves);
@@ -215,6 +252,27 @@ function App() {
             <div className="bg-gradient-to-r from-red-500 via-yellow-500 to-red-500 bg-clip-text text-transparent">
               {currentMessage}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Powerup Instructions Overlay */}
+      {showPowerupInstructions && (
+        <div className="fixed top-4 right-4 z-40 max-w-sm">
+          <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-white p-4 rounded-lg shadow-2xl border-2 border-yellow-300">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-bold text-lg">Powerup Acquired!</h3>
+              <button
+                onClick={() => setShowPowerupInstructions(null)}
+                className="text-white hover:text-yellow-200 text-xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+            <p className="text-sm">{showPowerupInstructions}</p>
+            <p className="text-xs mt-2 opacity-80">
+              Use the "Use" button in your powerup panel to activate it.
+            </p>
           </div>
         </div>
       )}
@@ -245,6 +303,14 @@ function App() {
               >
                 <RotateCcw className="w-5 h-5" />
                 New Game
+              </button>
+              
+              <button
+                onClick={() => setShowRulesLegend(true)}
+                className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg"
+              >
+                <Zap className="w-5 h-5" />
+                Rules & Legend
               </button>
               
               {gameState.currentPlayer === 'black' && (
@@ -295,24 +361,98 @@ function App() {
                 </button>
               )}
             </div>
+
           </div>
 
           <div className="w-full max-w-sm">
             <GameInfo gameState={gameState} />
             
-            <div className="mt-6 bg-white rounded-lg shadow-lg p-4">
-              <h3 className="font-bold text-gray-800 mb-3">Game Rules</h3>
-              <ul className="text-sm text-gray-600 space-y-2">
-                <li>• Standard chess movement rules apply</li>
-                <li>• Board shrinks every 20 turns (2x2 blocks)</li>
-                <li>• Captured pieces respawn every 15 turns</li>
-                <li>• Power-ups appear every 20 turns</li>
-                <li>• Win by eliminating the enemy king</li>
-                <li>• Red squares are dangerous zones</li>
-              </ul>
-            </div>
+            {/* Check Status Display */}
+            {gameState.gamePhase === 'playing' && (
+              <div className="mt-6 bg-white rounded-lg shadow-lg p-4">
+                <h3 className="font-bold text-gray-800 mb-3">Game Status</h3>
+                <div className="space-y-2">
+                  {isInCheck(gameState.board, 'white', gameState.shrunkSquares) && (
+                    <div className="text-red-600 font-semibold flex items-center gap-2">
+                      <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></span>
+                      You are in CHECK!
+                    </div>
+                  )}
+                  {isInCheck(gameState.board, 'black', gameState.shrunkSquares) && (
+                    <div className="text-blue-600 font-semibold flex items-center gap-2">
+                      <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
+                      Computer is in CHECK!
+                    </div>
+                  )}
+                  {!isInCheck(gameState.board, 'white', gameState.shrunkSquares) && 
+                   !isInCheck(gameState.board, 'black', gameState.shrunkSquares) && (
+                    <div className="text-green-600 font-semibold">
+                      No checks - Safe to move
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Powerup Display */}
+            {gameState.gamePhase === 'playing' && gameState.playerPowerUps.get('white') && (
+              <div className="mt-6 bg-gradient-to-r from-yellow-100 to-yellow-200 rounded-lg shadow-lg p-4 border-2 border-yellow-400">
+                <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-yellow-600" />
+                  Your Powerup
+                </h3>
+                <div className="space-y-3">
+                  {(() => {
+                    const powerup = gameState.playerPowerUps.get('white');
+                    if (!powerup) return null;
+                    
+                    const getPowerupIcon = (type: string) => {
+                      switch (type) {
+                        case 'shield': return <Shield className="w-6 h-6 text-blue-600" />;
+                        case 'teleport': return <Bolt className="w-6 h-6 text-purple-600" />;
+                        case 'trap': return <Target className="w-6 h-6 text-red-600" />;
+                        case 'extraMove': return <ArrowRight className="w-6 h-6 text-green-600" />;
+                        default: return <Zap className="w-6 h-6 text-yellow-600" />;
+                      }
+                    };
+                    
+                    return (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {getPowerupIcon(powerup.type)}
+                          <div>
+                            <div className="font-semibold text-gray-800 capitalize">
+                              {powerup.type}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              {getPowerUpDescription(powerup.type)}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const newGameState = usePowerUp(gameState, 'white', powerup.type);
+                            setGameState(newGameState);
+                            showEventMessage(`${powerup.type.toUpperCase()} ACTIVATED!`);
+                          }}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors duration-200"
+                        >
+                          Use
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
         </div>
+        
+        {/* Game Rules Legend Modal */}
+        <GameRulesLegend 
+          isOpen={showRulesLegend} 
+          onClose={() => setShowRulesLegend(false)} 
+        />
       </div>
     </div>
   );

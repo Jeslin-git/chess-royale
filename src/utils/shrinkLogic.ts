@@ -2,6 +2,11 @@ import { GameState, Position, ShrinkBlock, ChessPiece } from '../types/chess';
 import { positionKey } from './chessLogic';
 import { playSound } from './soundEffects';
 
+export function shouldGenerateShrinkBlocks(turnCount: number): boolean {
+  // Generate shrink blocks every 12 turns, with warnings 3 turns before
+  return turnCount > 0 && turnCount % 12 === 9;
+}
+
 export function generateShrinkBlocks(gameState: GameState): ShrinkBlock[] {
   const blocks: ShrinkBlock[] = [];
   const shrinkLevel = Math.floor(gameState.turnCount / 20);
@@ -187,7 +192,7 @@ function isValidPosition(pos: Position): boolean {
 export function updateAndApplyShrinkBlocks(gameState: GameState): GameState {
   let newGameState = { ...gameState };
   const currentTurn = newGameState.turnCount;
-  const shrinkCycle = 30; // Increased from 20 to 30 turns per shrink cycle
+  const shrinkCycle = 12; // Speed up to 12 turns per shrink cycle
   const cyclePosition = currentTurn % shrinkCycle;
   const shrinkLevel = Math.floor(currentTurn / shrinkCycle);
 

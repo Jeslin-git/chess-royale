@@ -4,8 +4,8 @@ import { playSound } from './soundEffects';
 export function processPieceTransformations(gameState: GameState): GameState {
   const newBoard = gameState.board.map(row => [...row]);
   
-  // Only allow transformations every 25 turns to make them special events
-  if (gameState.turnCount % 25 !== 0 || gameState.turnCount === 0) {
+  // Only allow transformations every 12 turns to make them special events
+  if (gameState.turnCount % 12 !== 0 || gameState.turnCount === 0) {
     return gameState;
   }
   

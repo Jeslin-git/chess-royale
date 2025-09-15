@@ -1,5 +1,5 @@
-import { GameState, ChessPiece, PieceColor, Position, Move } from '../types/chess';
-import { getAllPossibleMoves, evaluatePosition, positionKey, PIECE_VALUES } from './chessLogic';
+import { ChessPiece, GameState, Move, Position, PieceColor } from '../types/chess';
+import { isValidMove, evaluatePosition, PIECE_VALUES, positionKey, getLegalMoves, isInCheck, isCheckmate, isStalemate, findKing as findKingInBoard, isSquareAttacked } from './chessLogic';
 import { generateShrinkBlocks, applyShrinkBlocks, updateAndApplyShrinkBlocks } from './shrinkLogic';
 import { createRespawnQueue, processRespawnQueue } from './respawnLogic';
 import { processPieceTransformations, updatePieceMovementCounters, resetMovementCounter } from './transformationLogic';
@@ -120,14 +120,28 @@ export function respawnPiece(gameState: GameState): GameState {
 }
 
 export function checkGameOver(gameState: GameState): GameState {
+  // Check for checkmate and stalemate for both players
+  const whiteInCheckmate = isCheckmate(gameState.board, 'white', gameState.shrunkSquares);
+  const blackInCheckmate = isCheckmate(gameState.board, 'black', gameState.shrunkSquares);
+  const whiteInStalemate = isStalemate(gameState.board, 'white', gameState.shrunkSquares);
+  const blackInStalemate = isStalemate(gameState.board, 'black', gameState.shrunkSquares);
+  
+  let winner: PieceColor | 'draw' | null = null;
+  
+  if (whiteInCheckmate) {
+    winner = 'black';
+  } else if (blackInCheckmate) {
+    winner = 'white';
+  } else if (whiteInStalemate || blackInStalemate) {
+    winner = 'draw';
+  }
+  
+  // Fallback: check if kings are missing (for battle royale compatibility)
   const whiteKing = findKing(gameState.board, 'white');
   const blackKing = findKing(gameState.board, 'black');
   
-  let winner: PieceColor | null = null;
-  
   if (!whiteKing && !blackKing) {
-    // Both kings gone - draw (shouldn't happen in battle royale)
-    winner = null;
+    winner = 'draw';
   } else if (!whiteKing) {
     winner = 'black';
   } else if (!blackKing) {
@@ -173,48 +187,83 @@ export function processGameMechanics(gameState: GameState): GameState {
 }
 
 export function getComputerMove(gameState: GameState): Move | null {
-  const moves = getAllPossibleMoves(gameState.board, 'black', gameState.shrunkSquares);
-  if (moves.length === 0) return null;
+  // Get only legal moves (no moves that leave king in check)
+  const legalMoves = getLegalMoves(gameState.board, 'black', gameState.shrunkSquares);
+  if (legalMoves.length === 0) return null;
   
-  // Enhanced AI with strategic priorities
-  const evaluatedMoves = moves.map(move => {
-    let score = 0;
-    
-    // 1. King safety is top priority
-    score += evaluateKingSafety(gameState, move);
-    
-    // 2. Capture enemy pieces (especially king!)
-    if (move.captured) {
-      if (move.captured.type === 'king') {
-        score += 1000; // Winning move!
-      } else {
-        score += PIECE_VALUES[move.captured.type] * 10;
-      }
-    }
-    
-    // 3. Move toward powerups
-    score += evaluatePowerupProximity(gameState, move);
-    
-    // 4. Avoid shrinking danger zones
-    score += evaluateShrinkingSafety(gameState, move);
-    
-    // 5. Basic position evaluation
+  // Check for immediate checkmate opportunities
+  for (const move of legalMoves) {
     const tempBoard = gameState.board.map(row => [...row]);
     tempBoard[move.to.row][move.to.col] = move.piece;
     tempBoard[move.from.row][move.from.col] = null;
-    score += evaluatePosition(tempBoard, 'black');
     
-    // 6. Add some randomness for variety
-    score += Math.random() * 5;
+    if (isCheckmate(tempBoard, 'white', gameState.shrunkSquares)) {
+      return move; // Checkmate! Take it immediately
+    }
+  }
+  
+  // Enhanced AI with strategic priorities using minimax-like evaluation
+  const evaluatedMoves = legalMoves.map(move => {
+    let score = 0;
+    
+    // Create board after this move
+    const tempBoard = gameState.board.map(row => [...row]);
+    tempBoard[move.to.row][move.to.col] = move.piece;
+    tempBoard[move.from.row][move.from.col] = null;
+    
+    // 1. Checkmate/Check priorities (highest)
+    if (isInCheck(tempBoard, 'white', gameState.shrunkSquares)) {
+      score += 500; // Giving check is very good
+    }
+    
+    // 2. Capture valuable pieces
+    if (move.captured) {
+      score += PIECE_VALUES[move.captured.type] * 15;
+      
+      // Extra bonus for capturing pieces that threaten our king
+      const ourKingPos = findKingInBoard(gameState.board, 'black');
+      if (ourKingPos && isSquareAttacked(gameState.board, ourKingPos, 'white', gameState.shrunkSquares)) {
+        if (isValidMove(gameState.board, move.to, ourKingPos, gameState.shrunkSquares)) {
+          score += 200; // Remove threats to our king
+        }
+      }
+    }
+    
+    // 3. King safety evaluation
+    score += evaluateKingSafety(gameState, move);
+    
+    // 4. Center control bonus
+    const centerSquares = [{row: 3, col: 3}, {row: 3, col: 4}, {row: 4, col: 3}, {row: 4, col: 4}];
+    if (centerSquares.some(center => center.row === move.to.row && center.col === move.to.col)) {
+      score += 10;
+    }
+    
+    // 5. Avoid moving into danger
+    if (isSquareAttacked(tempBoard, move.to, 'white', gameState.shrunkSquares)) {
+      score -= PIECE_VALUES[move.piece.type] * 8; // Penalty for hanging pieces
+    }
+    
+    // 6. Move toward powerups (lower priority)
+    score += evaluatePowerupProximity(gameState, move) * 0.5;
+    
+    // 7. Avoid shrinking danger zones
+    score += evaluateShrinkingSafety(gameState, move);
+    
+    // 8. Basic material evaluation
+    score += evaluatePosition(tempBoard, 'black') * 2;
+    
+    // 9. Small randomness for variety
+    score += Math.random() * 3;
     
     return { move, score };
   });
   
   evaluatedMoves.sort((a, b) => b.score - a.score);
   
-  // Pick from top moves with weighted probability
-  const topMoves = evaluatedMoves.slice(0, Math.min(5, evaluatedMoves.length));
-  const weights = topMoves.map((_, index) => Math.pow(0.7, index)); // Exponential decay
+  // Use weighted selection from top moves for some variety
+  const topCount = Math.min(3, evaluatedMoves.length);
+  const topMoves = evaluatedMoves.slice(0, topCount);
+  const weights = topMoves.map((_, index) => Math.pow(0.8, index));
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   
   let random = Math.random() * totalWeight;

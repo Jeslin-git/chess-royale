@@ -33,7 +33,7 @@ export interface GameState {
   board: (ChessPiece | null)[][];
   currentPlayer: PieceColor;
   gamePhase: 'setup' | 'playing' | 'shrinking' | 'gameOver';
-  winner: PieceColor | null;
+  winner: PieceColor | 'draw' | null;
   shrunkSquares: Set<string>;
   capturedPieces: ChessPiece[];
   turnCount: number;

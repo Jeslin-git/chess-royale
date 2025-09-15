@@ -190,6 +190,91 @@ export function getAllPossibleMoves(
   return moves;
 }
 
+export function findKing(board: (ChessPiece | null)[][], color: PieceColor): Position | null {
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const piece = board[row][col];
+      if (piece && piece.type === 'king' && piece.color === color) {
+        return { row, col };
+      }
+    }
+  }
+  return null;
+}
+
+export function isSquareAttacked(
+  board: (ChessPiece | null)[][],
+  position: Position,
+  byColor: PieceColor,
+  shrunkSquares: Set<string>
+): boolean {
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const piece = board[row][col];
+      if (piece && piece.color === byColor) {
+        const from = { row, col };
+        if (isValidMove(board, from, position, shrunkSquares)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+export function isInCheck(
+  board: (ChessPiece | null)[][],
+  color: PieceColor,
+  shrunkSquares: Set<string>
+): boolean {
+  const kingPos = findKing(board, color);
+  if (!kingPos) return false;
+  
+  const opponentColor = color === 'white' ? 'black' : 'white';
+  return isSquareAttacked(board, kingPos, opponentColor, shrunkSquares);
+}
+
+export function wouldBeInCheck(
+  board: (ChessPiece | null)[][],
+  move: Move,
+  color: PieceColor,
+  shrunkSquares: Set<string>
+): boolean {
+  // Create a copy of the board with the move applied
+  const newBoard = board.map(row => [...row]);
+  newBoard[move.to.row][move.to.col] = move.piece;
+  newBoard[move.from.row][move.from.col] = null;
+  
+  return isInCheck(newBoard, color, shrunkSquares);
+}
+
+export function getLegalMoves(
+  board: (ChessPiece | null)[][],
+  color: PieceColor,
+  shrunkSquares: Set<string>
+): Move[] {
+  const allMoves = getAllPossibleMoves(board, color, shrunkSquares);
+  return allMoves.filter(move => !wouldBeInCheck(board, move, color, shrunkSquares));
+}
+
+export function isCheckmate(
+  board: (ChessPiece | null)[][],
+  color: PieceColor,
+  shrunkSquares: Set<string>
+): boolean {
+  if (!isInCheck(board, color, shrunkSquares)) return false;
+  return getLegalMoves(board, color, shrunkSquares).length === 0;
+}
+
+export function isStalemate(
+  board: (ChessPiece | null)[][],
+  color: PieceColor,
+  shrunkSquares: Set<string>
+): boolean {
+  if (isInCheck(board, color, shrunkSquares)) return false;
+  return getLegalMoves(board, color, shrunkSquares).length === 0;
+}
+
 export function evaluatePosition(board: (ChessPiece | null)[][], color: PieceColor): number {
   let score = 0;
   

@@ -51,7 +51,7 @@ export function GameInfo({ gameState }: GameInfoProps) {
             <span className="font-semibold text-gray-700">Next Shrink</span>
           </div>
           <div className="font-bold text-red-600">
-            {30 - (gameState.turnCount % 30)} turns
+            {12 - (gameState.turnCount % 12)} turns
           </div>
         </div>
         

@@ -1,7 +1,7 @@
 import React from 'react';
 import { GameState, Position, ChessPiece as ChessPieceType, ShrinkBlock, PowerUp } from '../types/chess';
 import { ChessPiece } from './ChessPiece';
-import { positionKey } from '../utils/chessLogic';
+import { positionKey, isInCheck } from '../utils/chessLogic';
 
 interface ChessBoardProps {
   gameState: GameState;
@@ -41,8 +41,11 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
     ) || null;
   };
 
-  const isTrapSquare = (row: number, col: number): boolean => {
-    return false; // Disable traps for now
+  const isKingInCheck = (row: number, col: number): boolean => {
+    const piece = gameState.board[row][col];
+    if (!piece || piece.type !== 'king') return false;
+    
+    return isInCheck(gameState.board, piece.color, gameState.shrunkSquares);
   };
 
   const getSquareClass = (row: number, col: number): string => {
@@ -54,6 +57,8 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
     
     if (gameState.shrunkSquares.has(key)) {
       bgClass = 'bg-red-600';
+    } else if (isKingInCheck(row, col)) {
+      bgClass = 'bg-red-500 animate-pulse ring-4 ring-red-300'; // King in check - flashing red
     } else if (isShrinkWarning(row, col)) {
       const warningLevel = getShrinkWarningLevel(row, col);
       if (warningLevel <= 1) {
