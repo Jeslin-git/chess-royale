@@ -2,14 +2,15 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { ChessBoard } from './components/ChessBoard';
 import { GameInfo } from './components/GameInfo';
 import { GameState, Position, Move } from './types/chess';
-import { 
-  createInitialGameState, 
-  makeMove, 
-  shrinkBoard, 
-  respawnPiece, 
+import {
+  createInitialGameState,
+  makeMove,
+  shrinkBoard,
+  respawnPiece,
   checkGameOver,
   getComputerMove,
-  processGameMechanics
+  processGameMechanics,
+  processPostMoveEffects
 } from './utils/gameLogic';
 import { generateShrinkBlocks } from './utils/shrinkLogic';
 import { getAllPossibleMoves } from './utils/chessLogic';
@@ -20,6 +21,33 @@ function App() {
   const [gameState, setGameState] = useState<GameState>(createInitialGameState);
   const [selectedSquare, setSelectedSquare] = useState<Position | null>(null);
   const [validMoves, setValidMoves] = useState<Position[]>([]);
+  const [eventMessages, setEventMessages] = useState<string[]>([]);
+  const [currentMessage, setCurrentMessage] = useState<string | null>(null);
+  const [messageQueue, setMessageQueue] = useState<string[]>([]);
+  const [isScreenShaking, setIsScreenShaking] = useState(false);
+
+  const triggerScreenShake = useCallback(() => {
+    setIsScreenShaking(true);
+    setTimeout(() => setIsScreenShaking(false), 500);
+  }, []);
+
+  const showEventMessage = useCallback((message: string) => {
+    setMessageQueue(prev => [...prev, message]);
+  }, []);
+
+  // Process message queue to show one message at a time
+  useEffect(() => {
+    if (!currentMessage && messageQueue.length > 0) {
+      const nextMessage = messageQueue[0];
+      setCurrentMessage(nextMessage);
+      setMessageQueue(prev => prev.slice(1));
+      
+      // Remove message after 2 seconds
+      setTimeout(() => {
+        setCurrentMessage(null);
+      }, 2000);
+    }
+  }, [currentMessage, messageQueue]);
 
   const handleShrink = useCallback(() => {
     setGameState((prevState: GameState) => {
@@ -75,18 +103,14 @@ function App() {
           // Process turn-based mechanics after computer move
           const processedState = processGameMechanics(checkedGameState);
           
-          // Check for shrinking and respawning
-          let finalState = processedState;
+          // Process post-move effects using dedicated hooks
+          const { newGameState: finalState, events } = processPostMoveEffects(processedState, triggerScreenShake);
           
-          // Check for shrinking every 20 turns
-          if (finalState.turnCount % 20 === 0 && finalState.turnCount > 0) {
-            finalState = shrinkBoard(finalState);
-          }
+          // Show event messages
+          events.forEach(event => showEventMessage(event));
           
-          // Check for respawning every 15 turns
-          if (finalState.turnCount % 15 === 0 && finalState.turnCount > 0) {
-            finalState = respawnPiece(finalState);
-          }
+          // Show turn message
+          showEventMessage("YOUR TURN!");
           
           setGameState(finalState);
         } else {
@@ -151,18 +175,11 @@ function App() {
         // Process turn-based mechanics after each move
         const processedState = processGameMechanics(checkedGameState);
         
-        // Check for shrinking and respawning
-        let finalState = processedState;
+        // Process post-move effects using dedicated hooks
+        const { newGameState: finalState, events } = processPostMoveEffects(processedState, triggerScreenShake);
         
-        // Check for shrinking every 20 turns
-        if (finalState.turnCount % 20 === 0 && finalState.turnCount > 0) {
-          finalState = shrinkBoard(finalState);
-        }
-        
-        // Check for respawning every 15 turns
-        if (finalState.turnCount % 15 === 0 && finalState.turnCount > 0) {
-          finalState = respawnPiece(finalState);
-        }
+        // Show event messages
+        events.forEach(event => showEventMessage(event));
         
         setGameState(finalState);
       }
@@ -190,7 +207,18 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+    <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 ${isScreenShaking ? 'screen-shake' : ''}`}>
+      {/* Single Event Message Overlay */}
+      {currentMessage && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div className="text-6xl md:text-8xl font-black text-white text-center event-message drop-shadow-2xl animate-pulse">
+            <div className="bg-gradient-to-r from-red-500 via-yellow-500 to-red-500 bg-clip-text text-transparent">
+              {currentMessage}
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl md:text-6xl font-bold text-white mb-2 bg-gradient-to-r from-yellow-400 to-purple-400 bg-clip-text text-transparent">

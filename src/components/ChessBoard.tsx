@@ -19,20 +19,18 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
     return validMoves.some(move => move.row === row && move.col === col);
   };
   
-  // Simplified visual indicators
+  // Simplified visual indicators for individual squares
   const isShrinkWarning = (row: number, col: number): boolean => {
     return gameState.shrinkBlocks.some(block => 
       block.isWarning && 
-      row >= block.position.row && row < block.position.row + 2 &&
-      col >= block.position.col && col < block.position.col + 2
+      block.position.row === row && block.position.col === col
     );
   };
 
   const getShrinkWarningLevel = (row: number, col: number): number => {
     const block = gameState.shrinkBlocks.find(block => 
       block.isWarning && 
-      row >= block.position.row && row < block.position.row + 2 &&
-      col >= block.position.col && col < block.position.col + 2
+      block.position.row === row && block.position.col === col
     );
     return block ? block.turnsUntilShrink : 0;
   };
@@ -58,12 +56,16 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
       bgClass = 'bg-red-600';
     } else if (isShrinkWarning(row, col)) {
       const warningLevel = getShrinkWarningLevel(row, col);
-      if (warningLevel === 1) {
-        bgClass = 'bg-red-400';
-      } else if (warningLevel === 2) {
-        bgClass = 'bg-orange-400';
+      if (warningLevel <= 1) {
+        bgClass = 'bg-red-500 animate-pulse'; // Critical - about to shrink
+      } else if (warningLevel <= 3) {
+        bgClass = 'bg-red-400'; // Danger - very soon
+      } else if (warningLevel <= 5) {
+        bgClass = 'bg-orange-400'; // Warning - soon
+      } else if (warningLevel <= 10) {
+        bgClass = 'bg-yellow-400'; // Caution - moderate time
       } else {
-        bgClass = 'bg-yellow-400';
+        bgClass = 'bg-yellow-200'; // Early warning - plenty of time
       }
     } else if (isSquareSelected(row, col)) {
       bgClass = isLight ? 'bg-blue-300' : 'bg-blue-600';
@@ -92,7 +94,25 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
                 className={getSquareClass(row, col)}
                 onClick={() => onSquareClick(position)}
               >
-                {piece && <ChessPiece piece={piece} />}
+                {piece && (
+                  <div className={`
+                    ${piece.isTeleporting ? 'king-teleport' : ''}
+                    ${piece.isEmergency ? 'emergency-warning' : ''}
+                    ${piece.isRespawning ? 'respawn-lightning respawn-shockwave' : ''}
+                    ${piece.isTransformed && piece.transformationType === 'veteran' ? 'veteran-glow' : ''}
+                    ${piece.isTransformed && piece.transformationType === 'fusion' ? 'fusion-glow' : ''}
+                  `}>
+                    <ChessPiece piece={piece} />
+                    {/* Transformation indicator */}
+                    {piece.isTransformed && (
+                      <div className="absolute -top-1 -left-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-xs font-bold">
+                          {piece.transformationType === 'veteran' ? 'V' : 'F'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {isValidMoveSquare(row, col) && !piece && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="w-4 h-4 bg-white bg-opacity-50 rounded-full" />
@@ -106,14 +126,14 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
                   </div>
                 )}
                 
-                {/* Power-up indicator - simplified */}
+                {/* Enhanced Power-up indicator */}
                 {isPowerUp(row, col) && (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">
-                        {isPowerUp(row, col)?.type === 'teleport' ? 'T' : 
-                         isPowerUp(row, col)?.type === 'shield' ? 'S' :
-                         isPowerUp(row, col)?.type === 'extraMove' ? 'E' : 'T'}
+                    <div className="w-8 h-8 bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center powerup-icon shadow-lg">
+                      <span className="text-white text-sm font-bold">
+                        {isPowerUp(row, col)?.type === 'teleport' ? '⚡' :
+                         isPowerUp(row, col)?.type === 'shield' ? '🛡️' :
+                         isPowerUp(row, col)?.type === 'extraMove' ? '⏩' : '💥'}
                       </span>
                     </div>
                   </div>

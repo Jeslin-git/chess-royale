@@ -1,9 +1,10 @@
 import { GameState, ChessPiece, PieceColor, Position, Move } from '../types/chess';
-import { getAllPossibleMoves, evaluatePosition, positionKey } from './chessLogic';
-import { generateShrinkBlocks, applyShrinkBlocks } from './shrinkLogic';
+import { getAllPossibleMoves, evaluatePosition, positionKey, PIECE_VALUES } from './chessLogic';
+import { generateShrinkBlocks, applyShrinkBlocks, updateAndApplyShrinkBlocks } from './shrinkLogic';
 import { createRespawnQueue, processRespawnQueue } from './respawnLogic';
 import { processPieceTransformations, updatePieceMovementCounters, resetMovementCounter } from './transformationLogic';
 import { spawnPowerUps, updatePowerUps, collectPowerUp, applyPowerUpEffects } from './powerupLogic';
+import { playSound } from './soundEffects';
 
 export function createInitialBoard(): (ChessPiece | null)[][] {
   const board: (ChessPiece | null)[][] = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -76,6 +77,16 @@ export function makeMove(gameState: GameState, move: Move): GameState {
   // Check for powerup collection
   let newGameState = collectPowerUp(gameState, move.to, gameState.currentPlayer);
   
+  // Check if powerup was collected and add feedback message
+  const powerUpCollected = gameState.powerUps.length > newGameState.powerUps.length;
+  if (powerUpCollected) {
+    const collectedPowerUp = newGameState.playerPowerUps.get(gameState.currentPlayer);
+    if (collectedPowerUp) {
+      // This will be handled by the message system in App.tsx
+      console.log(`Powerup collected: ${collectedPowerUp.type}`);
+    }
+  }
+  
   // Update respawn queue when pieces are captured
   let newRespawnQueue = newGameState.respawnQueue;
   if (move.captured) {
@@ -98,16 +109,7 @@ export function makeMove(gameState: GameState, move: Move): GameState {
 }
 
 export function shrinkBoard(gameState: GameState): GameState {
-  // Generate new shrink blocks
-  const newShrinkBlocks = generateShrinkBlocks(gameState);
-  
-  // Apply shrink blocks
-  let newGameState = applyShrinkBlocks({
-    ...gameState,
-    shrinkBlocks: newShrinkBlocks
-  });
-  
-  return newGameState;
+  return updateAndApplyShrinkBlocks(gameState);
 }
 
 export function respawnPiece(gameState: GameState): GameState {
@@ -154,12 +156,8 @@ function findKing(board: (ChessPiece | null)[][], color: PieceColor): ChessPiece
 export function processGameMechanics(gameState: GameState): GameState {
   let newGameState = gameState;
   
-  // Generate shrink blocks for warning display
-  const newShrinkBlocks = generateShrinkBlocks(newGameState);
-  newGameState = {
-    ...newGameState,
-    shrinkBlocks: newShrinkBlocks
-  };
+  // Update and apply shrink blocks (handles generation, countdown, shrinking)
+  newGameState = updateAndApplyShrinkBlocks(newGameState);
   
   // Spawn powerups
   newGameState = spawnPowerUps(newGameState);
@@ -167,9 +165,9 @@ export function processGameMechanics(gameState: GameState): GameState {
   // Update powerups
   newGameState = updatePowerUps(newGameState);
   
-  // Disable transformations for now - too chaotic
-  // newGameState = updatePieceMovementCounters(newGameState);
-  // newGameState = processPieceTransformations(newGameState);
+  // Enable transformations with enhanced tracking
+  newGameState = updatePieceMovementCounters(newGameState);
+  newGameState = processPieceTransformations(newGameState);
   
   return newGameState;
 }
@@ -178,29 +176,230 @@ export function getComputerMove(gameState: GameState): Move | null {
   const moves = getAllPossibleMoves(gameState.board, 'black', gameState.shrunkSquares);
   if (moves.length === 0) return null;
   
-  // Simple AI: prefer captures, then random moves
-  const captureMoves = moves.filter(move => move.captured);
-  if (captureMoves.length > 0) {
-    return captureMoves[Math.floor(Math.random() * captureMoves.length)];
-  }
-  
-  // Evaluate moves and pick the best one (with some randomness)
+  // Enhanced AI with strategic priorities
   const evaluatedMoves = moves.map(move => {
+    let score = 0;
+    
+    // 1. King safety is top priority
+    score += evaluateKingSafety(gameState, move);
+    
+    // 2. Capture enemy pieces (especially king!)
+    if (move.captured) {
+      if (move.captured.type === 'king') {
+        score += 1000; // Winning move!
+      } else {
+        score += PIECE_VALUES[move.captured.type] * 10;
+      }
+    }
+    
+    // 3. Move toward powerups
+    score += evaluatePowerupProximity(gameState, move);
+    
+    // 4. Avoid shrinking danger zones
+    score += evaluateShrinkingSafety(gameState, move);
+    
+    // 5. Basic position evaluation
     const tempBoard = gameState.board.map(row => [...row]);
     tempBoard[move.to.row][move.to.col] = move.piece;
     tempBoard[move.from.row][move.from.col] = null;
+    score += evaluatePosition(tempBoard, 'black');
     
-    return {
-      move,
-      score: evaluatePosition(tempBoard, 'black') + Math.random() * 2
-    };
+    // 6. Add some randomness for variety
+    score += Math.random() * 5;
+    
+    return { move, score };
   });
   
   evaluatedMoves.sort((a, b) => b.score - a.score);
   
-  // Pick from top 3 moves for some variety
-  const topMoves = evaluatedMoves.slice(0, Math.min(3, evaluatedMoves.length));
-  const selectedMove = topMoves[Math.floor(Math.random() * topMoves.length)];
+  // Pick from top moves with weighted probability
+  const topMoves = evaluatedMoves.slice(0, Math.min(5, evaluatedMoves.length));
+  const weights = topMoves.map((_, index) => Math.pow(0.7, index)); // Exponential decay
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   
-  return selectedMove.move;
+  let random = Math.random() * totalWeight;
+  for (let i = 0; i < topMoves.length; i++) {
+    random -= weights[i];
+    if (random <= 0) {
+      return topMoves[i].move;
+    }
+  }
+  
+  return topMoves[0].move;
+}
+
+function evaluateKingSafety(gameState: GameState, move: Move): number {
+  let score = 0;
+  const kingPos = findKingPosition(gameState.board, 'black');
+  
+  if (!kingPos) return -1000; // No king = bad!
+  
+  // If moving the king, evaluate new position safety
+  if (move.piece.type === 'king') {
+    // Avoid edges and corners when possible
+    const edgeDistance = Math.min(
+      move.to.row, 7 - move.to.row, 
+      move.to.col, 7 - move.to.col
+    );
+    score += edgeDistance * 10;
+    
+    // Avoid shrinking zones
+    const isShrinkDanger = gameState.shrinkBlocks.some(block => 
+      block.position.row === move.to.row && 
+      block.position.col === move.to.col &&
+      block.turnsUntilShrink <= 5
+    );
+    if (isShrinkDanger) score -= 100;
+  }
+  
+  // Protect king with other pieces
+  if (move.piece.type !== 'king') {
+    const distanceToKing = Math.abs(move.to.row - kingPos.row) + Math.abs(move.to.col - kingPos.col);
+    if (distanceToKing <= 2) score += 15; // Stay close to protect king
+  }
+  
+  return score;
+}
+
+function evaluatePowerupProximity(gameState: GameState, move: Move): number {
+  let score = 0;
+  
+  // Move toward powerups
+  for (const powerup of gameState.powerUps) {
+    const distance = Math.abs(move.to.row - powerup.position.row) + 
+                    Math.abs(move.to.col - powerup.position.col);
+    
+    if (distance === 0) {
+      score += 50; // Collect powerup!
+    } else if (distance <= 2) {
+      score += 20 / distance; // Get closer to powerups
+    }
+  }
+  
+  return score;
+}
+
+function evaluateShrinkingSafety(gameState: GameState, move: Move): number {
+  let score = 0;
+  
+  // Heavily penalize moving into danger zones
+  const isDangerZone = gameState.shrinkBlocks.some(block => 
+    block.position.row === move.to.row && 
+    block.position.col === move.to.col
+  );
+  
+  if (isDangerZone) {
+    const block = gameState.shrinkBlocks.find(block => 
+      block.position.row === move.to.row && 
+      block.position.col === move.to.col
+    );
+    if (block) {
+      if (block.turnsUntilShrink <= 1) {
+        score -= 200; // Immediate danger!
+      } else if (block.turnsUntilShrink <= 3) {
+        score -= 100; // High danger
+      } else if (block.turnsUntilShrink <= 5) {
+        score -= 50; // Moderate danger
+      } else {
+        score -= 20; // Low danger
+      }
+    }
+  }
+  
+  return score;
+}
+
+function findKingPosition(board: (ChessPiece | null)[][], color: PieceColor): Position | null {
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const piece = board[row][col];
+      if (piece && piece.type === 'king' && piece.color === color) {
+        return { row, col };
+      }
+    }
+  }
+  return null;
+}
+
+// Dedicated post-move hooks for clean separation of concerns
+export function processPostMoveEffects(gameState: GameState, triggerScreenShake?: () => void): {
+  newGameState: GameState;
+  events: string[];
+} {
+  let newGameState = gameState;
+  const events: string[] = [];
+
+  // Process shrinking and respawning
+  const shrinkResult = processShrinkEffects(newGameState, triggerScreenShake);
+  newGameState = shrinkResult.gameState;
+  events.push(...shrinkResult.events);
+
+  const respawnResult = processRespawnEffects(newGameState);
+  newGameState = respawnResult.gameState;
+  events.push(...respawnResult.events);
+
+  return { newGameState, events };
+}
+
+function processShrinkEffects(gameState: GameState, triggerScreenShake?: () => void): {
+  gameState: GameState;
+  events: string[];
+} {
+  const events: string[] = [];
+  const shrinkCountdown = 20 - (gameState.turnCount % 20);
+
+  // Add shrink warning events
+  if (shrinkCountdown === 5) {
+    events.push("SHRINKING IN 5 TURNS!");
+    playSound('emergency');
+  } else if (shrinkCountdown === 1) {
+    events.push("SHRINKING IMMINENT!");
+    playSound('emergency');
+  } else if (gameState.turnCount % 20 === 0 && gameState.turnCount > 0) {
+    events.push("BOARD SHRINKING!");
+    playSound('shrink');
+    if (triggerScreenShake) {
+      triggerScreenShake();
+    }
+  }
+
+  return { gameState, events };
+}
+
+function processRespawnEffects(gameState: GameState): {
+  gameState: GameState;
+  events: string[];
+} {
+  let newGameState = gameState;
+  const events: string[] = [];
+
+  // Check for respawning every 15 turns
+  if (newGameState.turnCount % 15 === 0 && newGameState.turnCount > 0) {
+    newGameState = respawnPiece(newGameState);
+    events.push("PIECE RESPAWNED!");
+    playSound('respawn');
+  }
+
+  // Check for powerup collection feedback
+  const whitePowerUp = newGameState.playerPowerUps.get('white');
+  const blackPowerUp = newGameState.playerPowerUps.get('black');
+  
+  if (whitePowerUp && newGameState.currentPlayer === 'black') {
+    // Player just collected a powerup on their previous turn
+    const description = getPowerUpDescription(whitePowerUp.type);
+    events.push(description);
+  }
+
+  return { gameState: newGameState, events };
+}
+
+function getPowerUpDescription(powerUpType: string): string {
+  const descriptions: Record<string, string> = {
+    'teleport': 'TELEPORT ACQUIRED!',
+    'shield': 'SHIELD ACQUIRED!', 
+    'extraMove': 'EXTRA MOVE ACQUIRED!',
+    'trap': 'TRAP ACQUIRED!'
+  };
+  
+  return descriptions[powerUpType] || 'POWERUP ACQUIRED!';
 }

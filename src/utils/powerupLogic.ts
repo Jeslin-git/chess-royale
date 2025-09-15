@@ -1,20 +1,21 @@
 import { GameState, PowerUp, Position, PieceColor } from '../types/chess';
 import { positionKey } from './chessLogic';
+import { playSound } from './soundEffects';
 
 export function spawnPowerUps(gameState: GameState): GameState {
-  const SPAWN_INTERVAL = 20; // Every 20 turns (same as shrinking)
+  const SPAWN_INTERVAL = 6; // Every 6 rounds (12 turns total)
   const SPAWN_COUNT_PER_PLAYER = 1;
   
-  // Only spawn powerups after turn 20 and every 20 turns
-  if (gameState.turnCount < 20 || gameState.turnCount % SPAWN_INTERVAL !== 0) {
+  // Only spawn powerups every 6 rounds (12 turns)
+  if (gameState.turnCount < 12 || gameState.turnCount % 12 !== 0) {
     return gameState;
   }
   
   const newPowerUps = [...gameState.powerUps];
   const activePlayers = getActivePlayers(gameState);
   
-  // Spawn only one powerup total (not per player)
-  if (activePlayers.length > 0) {
+  // Spawn 1 powerup per active player
+  for (const player of activePlayers) {
     const powerUp = createRandomPowerUp(gameState);
     if (powerUp) {
       newPowerUps.push(powerUp);
@@ -53,13 +54,33 @@ export function collectPowerUp(gameState: GameState, position: Position, player:
   newPowerUps.splice(powerUpIndex, 1);
   
   const newPlayerPowerUps = new Map(gameState.playerPowerUps);
+  
+  // Check if player already has a powerup (1 per player limit)
+  if (newPlayerPowerUps.get(player) !== null) {
+    return gameState; // Player already has a powerup
+  }
+  
   newPlayerPowerUps.set(player, powerUp);
+  
+  // Play pickup sound
+  playSound('powerup');
   
   return {
     ...gameState,
     powerUps: newPowerUps,
     playerPowerUps: newPlayerPowerUps
   };
+}
+
+export function getPowerUpDescription(powerUpType: string): string {
+  const descriptions: Record<string, string> = {
+    'teleport': 'TELEPORT: Move any piece anywhere instantly!',
+    'shield': 'SHIELD: Protect a piece from capture for 3 turns!',
+    'extraMove': 'EXTRA MOVE: Take another turn immediately!',
+    'trap': 'TRAP: Set a trap that captures enemy pieces!'
+  };
+  
+  return descriptions[powerUpType] || 'UNKNOWN POWERUP';
 }
 
 export function usePowerUp(gameState: GameState, player: PieceColor, powerUpType: string): GameState {

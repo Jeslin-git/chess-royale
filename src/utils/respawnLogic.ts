@@ -1,5 +1,6 @@
-import { GameState, ChessPiece, PieceColor, Position } from '../types/chess';
+import { GameState, ChessPiece, PieceColor, Position, PieceType } from '../types/chess';
 import { positionKey } from './chessLogic';
+import { playSound } from './soundEffects';
 
 const PIECE_WEIGHTS = {
   pawn: 40,    // High chance
@@ -64,13 +65,17 @@ export function processRespawnQueue(gameState: GameState): GameState {
   // Create respawned piece with weighted selection
   const respawnedPiece = selectWeightedPiece(nextRespawn.piece);
   
-  // Place piece on board
+  // Place piece on board with respawn animation flag
   newBoard[safePosition.row][safePosition.col] = {
     ...respawnedPiece,
     id: `${respawnedPiece.id}-respawn-${Date.now()}`,
     hasMoved: false,
-    turnsWithoutMoving: 0
+    turnsWithoutMoving: 0,
+    isRespawning: true
   };
+  
+  // Play respawn sound
+  playSound('respawn');
   
   // Remove from captured pieces
   const pieceIndex = newCapturedPieces.findIndex(p => p.id === nextRespawn.piece.id);

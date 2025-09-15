@@ -11,6 +11,9 @@ export interface ChessPiece {
   isTransformed?: boolean;
   transformationType?: 'fusion' | 'veteran';
   fusionMoves?: PieceType[];
+  isTeleporting?: boolean;
+  isEmergency?: boolean;
+  isRespawning?: boolean;
 }
 
 export interface PowerUp {

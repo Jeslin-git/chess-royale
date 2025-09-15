@@ -51,7 +51,7 @@ export function GameInfo({ gameState }: GameInfoProps) {
             <span className="font-semibold text-gray-700">Next Shrink</span>
           </div>
           <div className="font-bold text-red-600">
-            {20 - (gameState.turnCount % 20)} turns
+            {30 - (gameState.turnCount % 30)} turns
           </div>
         </div>
         
@@ -62,6 +62,12 @@ export function GameInfo({ gameState }: GameInfoProps) {
           </div>
           <div className="font-bold text-purple-600">
             {15 - (gameState.turnCount % 15)} turns
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+            <div
+              className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${((gameState.turnCount % 15) / 15) * 100}%` }}
+            ></div>
           </div>
         </div>
       </div>
@@ -89,18 +95,36 @@ export function GameInfo({ gameState }: GameInfoProps) {
         </div>
       )}
       
-      {/* Simplified info - only show essential features */}
-      {gameState.powerUps.length > 0 && (
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <PowerUpIcon className="w-4 h-4 text-yellow-600" />
-            <span className="font-semibold text-gray-700">Power-ups</span>
+      {/* Enhanced Power-up info */}
+      <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3 border border-yellow-200">
+        <div className="flex items-center gap-2 mb-2">
+          <PowerUpIcon className="w-4 h-4 text-yellow-600" />
+          <span className="font-semibold text-gray-700">Power-ups</span>
+        </div>
+        <div className="text-sm text-gray-600 mb-2">
+          {gameState.powerUps.length} available on board
+        </div>
+        
+        {/* Player power-up inventory */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-600">Your Power-up:</span>
+            <span className="text-xs font-bold text-blue-600">
+              {gameState.playerPowerUps.get('white')?.type || 'None'}
+            </span>
           </div>
-          <div className="text-sm text-gray-600">
-            {gameState.powerUps.length} available on board
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-600">Computer Power-up:</span>
+            <span className="text-xs font-bold text-red-600">
+              {gameState.playerPowerUps.get('black')?.type || 'None'}
+            </span>
           </div>
         </div>
-      )}
+        
+        <div className="text-xs text-gray-500 mt-2">
+          Next spawn: {12 - (gameState.turnCount % 12)} turns
+        </div>
+      </div>
       
       {gameState.shrinkBlocks.length > 0 && (
         <div className="bg-red-50 rounded-lg p-3 border border-red-200">
