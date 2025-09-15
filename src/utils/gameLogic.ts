@@ -395,18 +395,23 @@ function processShrinkEffects(gameState: GameState, triggerScreenShake?: () => v
   events: string[];
 } {
   const events: string[] = [];
-  const shrinkCountdown = 20 - (gameState.turnCount % 20);
+  const shrinkCountdown = 16 - (gameState.turnCount % 16);
 
-  // Add shrink warning events
-  if (shrinkCountdown === 5) {
-    events.push("SHRINKING IN 5 TURNS!");
+  // Add shrink warning events synchronized with the new 16-turn cycle
+  if (shrinkCountdown === 3) {
+    events.push("SHRINKING IN 3 TURNS!");
     playSound('emergency');
   } else if (shrinkCountdown === 1) {
     events.push("SHRINKING IMMINENT!");
     playSound('emergency');
-  } else if (gameState.turnCount % 20 === 0 && gameState.turnCount > 0) {
+    // Trigger screen shake 1 turn before shrink for dramatic effect
+    if (triggerScreenShake) {
+      triggerScreenShake();
+    }
+  } else if (gameState.turnCount % 16 === 0 && gameState.turnCount > 0) {
     events.push("BOARD SHRINKING!");
     playSound('shrink');
+    // Additional shake when shrinking actually happens
     if (triggerScreenShake) {
       triggerScreenShake();
     }

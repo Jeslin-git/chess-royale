@@ -39,7 +39,7 @@ export function GameInfo({ gameState }: GameInfoProps) {
           <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
             <div 
               className="bg-green-600 h-2 rounded-full transition-all duration-300" 
-              style={{ width: `${(gameState.turnCount % 20) * 5}%` }}
+              style={{ width: `${((gameState.turnCount % 16) / 16) * 100}%` }}
             ></div>
           </div>
           <div className="text-xs text-gray-500 mt-1">Progress to next shrink</div>
@@ -51,7 +51,7 @@ export function GameInfo({ gameState }: GameInfoProps) {
             <span className="font-semibold text-gray-700">Next Shrink</span>
           </div>
           <div className="font-bold text-red-600">
-            {12 - (gameState.turnCount % 12)} turns
+            {16 - (gameState.turnCount % 16)} turns
           </div>
         </div>
         

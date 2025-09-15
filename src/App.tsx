@@ -96,8 +96,8 @@ function App() {
   const handleShrinkAndRespawn = useCallback((gameState: GameState) => {
     let newState = gameState;
     
-    // Check for shrinking every 20 turns
-    if (newState.turnCount % 20 === 0 && newState.turnCount > 0) {
+    // Check for shrinking every 16 turns
+    if (newState.turnCount % 16 === 0 && newState.turnCount > 0) {
       newState = shrinkBoard(newState);
     }
     

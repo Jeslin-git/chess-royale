@@ -3,13 +3,13 @@ import { positionKey } from './chessLogic';
 import { playSound } from './soundEffects';
 
 export function shouldGenerateShrinkBlocks(turnCount: number): boolean {
-  // Generate shrink blocks every 12 turns, with warnings 3 turns before
-  return turnCount > 0 && turnCount % 12 === 9;
+  // Generate shrink blocks every 16 turns, with warnings 3 turns before
+  return turnCount > 0 && turnCount % 16 === 13;
 }
 
 export function generateShrinkBlocks(gameState: GameState): ShrinkBlock[] {
   const blocks: ShrinkBlock[] = [];
-  const shrinkLevel = Math.floor(gameState.turnCount / 20);
+  const shrinkLevel = Math.floor(gameState.turnCount / 16);
   
   if (shrinkLevel >= 3) return blocks; // Max shrink level reached
   
@@ -19,7 +19,7 @@ export function generateShrinkBlocks(gameState: GameState): ShrinkBlock[] {
   blockPositions.forEach((pos) => {
     blocks.push({
       position: pos,
-      turnsUntilShrink: 20,
+      turnsUntilShrink: 3, // 3 turns warning before shrink
       isWarning: true
     });
   });
@@ -192,14 +192,14 @@ function isValidPosition(pos: Position): boolean {
 export function updateAndApplyShrinkBlocks(gameState: GameState): GameState {
   let newGameState = { ...gameState };
   const currentTurn = newGameState.turnCount;
-  const shrinkCycle = 12; // Speed up to 12 turns per shrink cycle
+  const shrinkCycle = 16; // New 16-turn cycle
   const cyclePosition = currentTurn % shrinkCycle;
   const shrinkLevel = Math.floor(currentTurn / shrinkCycle);
 
-  // Generate warning blocks at the start of each cycle (turn 1, 31, 61, etc.)
+  // Generate warning blocks 3 turns before shrink (turn 13 of each 16-turn cycle)
   let blocks = [...newGameState.shrinkBlocks];
   
-  if (cyclePosition === 1 && shrinkLevel < 3) {
+  if (cyclePosition === 13 && shrinkLevel < 3) {
     // Generate new warning blocks for this cycle
     const newBlocks = generateShrinkBlocks({
       ...newGameState,
@@ -207,7 +207,7 @@ export function updateAndApplyShrinkBlocks(gameState: GameState): GameState {
     });
     blocks = newBlocks.map(block => ({ 
       ...block, 
-      turnsUntilShrink: shrinkCycle - 5, // Shrink 5 turns before cycle ends
+      turnsUntilShrink: 3, // 3 turns warning
       isWarning: true 
     }));
   } else if (blocks.length > 0) {
