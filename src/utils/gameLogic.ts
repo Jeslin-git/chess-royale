@@ -6,6 +6,7 @@ import { processPieceTransformations, updatePieceMovementCounters, resetMovement
 import { spawnPowerUps, updatePowerUps, collectPowerUp, applyPowerUpEffects } from './powerupLogic';
 import { spawnTriviaTiles } from './triviaLogic';
 import { playSound } from './soundEffects';
+import { fetchGif } from './giphyLogic';
 
 export function createInitialBoard(): (ChessPiece | null)[][] {
   const board: (ChessPiece | null)[][] = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -354,6 +355,17 @@ export function processPostMoveEffects(gameState: GameState, triggerScreenShake?
   const respawnResult = processRespawnEffects(newGameState);
   newGameState = respawnResult.gameState;
   events.push(...respawnResult.events);
+
+  if (newGameState.gamePhase === 'gameOver' && newGameState.winner) {
+    events.push(`checkmate,${newGameState.winner} wins`);
+  }
+  
+  if (newGameState.turnCount % 15 === 0 && newGameState.turnCount > 0) {
+    events.push('piece-respawn');
+  }
+  if (newGameState.turnCount % 12 === 0 && newGameState.turnCount > 0) {
+    events.push('piece-transformation');
+  }
 
   return { newGameState, events };
 }

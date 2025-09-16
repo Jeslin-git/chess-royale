@@ -6,8 +6,6 @@ import { GameState, Position, Move, TriviaTile } from './types/chess';
 import {
   createInitialGameState,
   makeMove,
-  shrinkBoard,
-  respawnPiece,
   checkGameOver,
   getComputerMove,
   processGameMechanics,
@@ -18,6 +16,7 @@ import { getLegalMoves, isInCheck } from './utils/chessLogic';
 import { getPowerUpDescription, collectPowerUp, usePowerUp } from './utils/powerupLogic';
 import { TriviaModal } from './components/TriviaModal';
 import { fetchTriviaQuestion } from './utils/triviaLogic';
+import { fetchGif } from './utils/giphyLogic';
 import { RotateCcw, Play, Zap, Shield, Bolt, Target, ArrowRight } from 'lucide-react';
 
 function App() {
@@ -34,6 +33,8 @@ function App() {
   const [isTriviaModalOpen, setIsTriviaModalOpen] = useState(false);
   const [triviaTile, setTriviaTile] = useState<TriviaTile | null>(null);
   const [extraMove, setExtraMove] = useState(false);
+  const [gifUrl, setGifUrl] = useState<string | null>(null);
+
 
   const triggerScreenShake = useCallback(() => {
     setIsScreenShaking(true);
@@ -69,40 +70,33 @@ function App() {
     }
   }, [currentMessage, messageQueue]);
 
-  const handleShrink = useCallback(() => {
-    setGameState((prevState: GameState) => {
-      if (prevState.turnCount % 20 === 0 && prevState.turnCount > 0) {
-        return shrinkBoard(prevState);
+  useEffect(() => {
+    const handleGifTrigger = async () => {
+      if (!gifUrl) {
+        const hasCheckmateEvent = messageQueue.some(msg => msg.includes('checkmate'));
+        const hasRespawnEvent = messageQueue.some(msg => msg.includes('piece-respawn'));
+        const hasTransformationEvent = messageQueue.some(msg => msg.includes('piece-transformation'));
+        
+        let tag = '';
+        if (hasCheckmateEvent) {
+            tag = 'checkmate chess';
+        } else if (hasRespawnEvent) {
+            tag = 'respawn';
+        } else if (hasTransformationEvent) {
+            tag = 'transformation';
+        }
+        
+        if (tag) {
+          const newGifUrl = await fetchGif(tag);
+          if (newGifUrl) {
+            setGifUrl(newGifUrl);
+            setTimeout(() => setGifUrl(null), 3000);
+          }
+        }
       }
-      return prevState;
-    });
-  }, []);
-
-  const handleRespawn = useCallback(() => {
-    setGameState((prevState: GameState) => {
-      if (prevState.turnCount % 15 === 0 && prevState.turnCount > 0) {
-        return respawnPiece(prevState);
-      }
-      return prevState;
-    });
-  }, []);
-
-  const handleTimerTick = useCallback(() => {
-  }, []);
-
-  const handleShrinkAndRespawn = useCallback((gameState: GameState) => {
-    let newState = gameState;
-    
-    if (newState.turnCount % 16 === 0 && newState.turnCount > 0) {
-      newState = shrinkBoard(newState);
-    }
-    
-    if (newState.turnCount % 15 === 0 && newState.turnCount > 0) {
-      newState = respawnPiece(newState);
-    }
-    
-    return newState;
-  }, []);
+    };
+    handleGifTrigger();
+  }, [messageQueue, gifUrl]);
 
   useEffect(() => {
     if (gameState.currentPlayer === 'black' && gameState.gamePhase === 'playing') {
@@ -135,12 +129,11 @@ function App() {
   }, [gameState]);
 
   const handleSquareClick = useCallback((position: Position) => {
-    console.log('Square clicked:', position, 'Current player:', gameState.currentPlayer, 'Game phase:', gameState.gamePhase);
-    if (gameState.gamePhase !== 'playing' || gameState.currentPlayer !== 'white') return;
+    if (gameState.gamePhase !== 'playing' || (gameState.currentPlayer !== 'white' && !extraMove)) return;
 
     const piece = gameState.board[position.row][position.col];
     
-    const currentPlayer = extraMove ? 'white' : gameState.currentPlayer;
+    const currentPlayer = 'white';
 
     if (!selectedSquare) {
       if (piece && piece.color === currentPlayer) {
@@ -163,8 +156,6 @@ function App() {
       move => move.row === position.row && move.col === position.col
     );
 
-    console.log('Valid moves:', validMoves, 'Is valid move:', isValidMoveSquare);
-
     if (isValidMoveSquare) {
       const selectedPiece = gameState.board[selectedSquare.row][selectedSquare.col];
       if (selectedPiece) {
@@ -182,8 +173,17 @@ function App() {
           piece: selectedPiece,
           captured: piece || undefined
         };
+        
+        let newGameState;
 
-        let newGameState = makeMove(gameState, move);
+        // If it's an extra move, we don't switch players
+        if (extraMove) {
+            newGameState = makeMove({ ...gameState, currentPlayer: 'white' }, move);
+            newGameState.currentPlayer = 'white';
+            setExtraMove(false);
+        } else {
+            newGameState = makeMove(gameState, move);
+        }
         
         if (powerUpOnSquare) {
           newGameState = collectPowerUp(newGameState, position, 'white');
@@ -211,11 +211,6 @@ function App() {
         
         events.forEach(event => showEventMessage(event));
         
-        if (extraMove) {
-          finalState.currentPlayer = 'white';
-          setExtraMove(false);
-        }
-        
         setGameState(finalState);
       }
       setSelectedSquare(null);
@@ -232,7 +227,7 @@ function App() {
         setValidMoves([]);
       }
     }
-  }, [gameState, selectedSquare, validMoves, showEventMessage, extraMove]);
+  }, [gameState, selectedSquare, validMoves, showEventMessage, extraMove, gifUrl]);
 
   const handleTriviaAnswer = useCallback((isCorrect: boolean) => {
     setIsTriviaModalOpen(false);
@@ -275,6 +270,12 @@ function App() {
 
   return (
     <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 ${isScreenShaking ? 'screen-shake' : ''}`}>
+      {gifUrl && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <img src={gifUrl} alt="Event GIF" className="max-h-1/2 max-w-1/2 opacity-80" />
+        </div>
+      )}
+
       {currentMessage && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
           <div className="text-6xl md:text-8xl font-black text-white text-center event-message drop-shadow-2xl animate-pulse">
