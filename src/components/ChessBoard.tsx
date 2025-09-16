@@ -1,5 +1,5 @@
 import React from 'react';
-import { GameState, Position, ChessPiece as ChessPieceType, ShrinkBlock, PowerUp } from '../types/chess';
+import { GameState, Position, ChessPiece as ChessPieceType, ShrinkBlock, PowerUp, TriviaTile } from '../types/chess';
 import { ChessPiece } from './ChessPiece';
 import { positionKey, isInCheck } from '../utils/chessLogic';
 
@@ -19,7 +19,6 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
     return validMoves.some(move => move.row === row && move.col === col);
   };
   
-  // Simplified visual indicators for individual squares
   const isShrinkWarning = (row: number, col: number): boolean => {
     return gameState.shrinkBlocks.some(block => 
       block.isWarning && 
@@ -41,6 +40,10 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
     ) || null;
   };
 
+  const isTriviaTile = (row: number, col: number): TriviaTile | null => {
+    return gameState.triviaTiles.find(tile => tile.position.row === row && tile.position.col === col) || null;
+  };
+
   const isKingInCheck = (row: number, col: number): boolean => {
     const piece = gameState.board[row][col];
     if (!piece || piece.type !== 'king') return false;
@@ -58,19 +61,19 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
     if (gameState.shrunkSquares.has(key)) {
       bgClass = 'bg-red-600';
     } else if (isKingInCheck(row, col)) {
-      bgClass = 'bg-red-500 animate-pulse ring-4 ring-red-300'; // King in check - flashing red
+      bgClass = 'bg-red-500 animate-pulse ring-4 ring-red-300';
     } else if (isShrinkWarning(row, col)) {
       const warningLevel = getShrinkWarningLevel(row, col);
       if (warningLevel <= 1) {
-        bgClass = 'bg-red-500 animate-pulse'; // Critical - about to shrink
+        bgClass = 'bg-red-500 animate-pulse';
       } else if (warningLevel <= 3) {
-        bgClass = 'bg-red-400'; // Danger - very soon
+        bgClass = 'bg-red-400';
       } else if (warningLevel <= 5) {
-        bgClass = 'bg-orange-400'; // Warning - soon
+        bgClass = 'bg-orange-400';
       } else if (warningLevel <= 10) {
-        bgClass = 'bg-yellow-400'; // Caution - moderate time
+        bgClass = 'bg-yellow-400';
       } else {
-        bgClass = 'bg-yellow-200'; // Early warning - plenty of time
+        bgClass = 'bg-yellow-200';
       }
     } else if (isSquareSelected(row, col)) {
       bgClass = isLight ? 'bg-blue-300' : 'bg-blue-600';
@@ -83,7 +86,6 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
 
   return (
     <div className="inline-block border-4 border-amber-900 rounded-lg overflow-hidden shadow-2xl">
-      {/* Turn indicator */}
       <div className={`text-center py-2 text-sm font-bold ${gameState.currentPlayer === 'white' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>
         {gameState.currentPlayer === 'white' ? 'Your Turn - Click a piece to move' : 'Computer Turn - Please wait...'}
       </div>
@@ -108,7 +110,6 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
                     ${piece.isTransformed && piece.transformationType === 'fusion' ? 'fusion-glow' : ''}
                   `}>
                     <ChessPiece piece={piece} />
-                    {/* Transformation indicator */}
                     {piece.isTransformed && (
                       <div className="absolute -top-1 -left-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center">
                         <span className="text-white text-xs font-bold">
@@ -124,14 +125,12 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
                   </div>
                 )}
                 
-                {/* Shrink warning countdown */}
                 {isShrinkWarning(row, col) && (
                   <div className="absolute top-1 right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                     {getShrinkWarningLevel(row, col)}
                   </div>
                 )}
                 
-                {/* Enhanced Power-up indicator */}
                 {isPowerUp(row, col) && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="w-8 h-8 bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center powerup-icon shadow-lg">
@@ -143,8 +142,15 @@ export function ChessBoard({ gameState, selectedSquare, validMoves, onSquareClic
                     </div>
                   </div>
                 )}
+
+                {isTriviaTile(row, col) && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-8 h-8 bg-gradient-to-r from-blue-400 to-blue-600 rounded-full flex items-center justify-center trivia-icon shadow-lg">
+                      <span className="text-white text-sm font-bold">?</span>
+                    </div>
+                  </div>
+                )}
                 
-                {/* Simple respawn indicator */}
                 {piece && piece.id.includes('respawn') && (
                   <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full" />
                 )}

@@ -23,6 +23,14 @@ export interface PowerUp {
   turnsUntilDespawn: number;
 }
 
+export interface TriviaTile {
+  id: string;
+  position: Position;
+  question: string;
+  correctAnswer: string;
+  incorrectAnswers: string[];
+}
+
 export interface ShrinkBlock {
   position: Position;
   turnsUntilShrink: number;
@@ -40,6 +48,7 @@ export interface GameState {
   timeUntilShrink: number;
   timeUntilRespawn: number;
   powerUps: PowerUp[];
+  triviaTiles: TriviaTile[];
   shrinkBlocks: ShrinkBlock[];
   playerPowerUps: Map<PieceColor, PowerUp | null>;
   respawnQueue: { player: PieceColor; piece: ChessPiece }[];

@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { ChessBoard } from './components/ChessBoard';
 import { GameInfo } from './components/GameInfo';
 import { GameRulesLegend } from './components/GameRulesLegend';
-import { GameState, Position, Move } from './types/chess';
+import { GameState, Position, Move, TriviaTile } from './types/chess';
 import {
   createInitialGameState,
   makeMove,
@@ -14,9 +14,10 @@ import {
   processPostMoveEffects
 } from './utils/gameLogic';
 import { generateShrinkBlocks } from './utils/shrinkLogic';
-import { getAllPossibleMoves, getLegalMoves, isInCheck } from './utils/chessLogic';
+import { getLegalMoves, isInCheck } from './utils/chessLogic';
 import { getPowerUpDescription, collectPowerUp, usePowerUp } from './utils/powerupLogic';
-import { useGameTimer } from './hooks/useGameTimer';
+import { TriviaModal } from './components/TriviaModal';
+import { fetchTriviaQuestion } from './utils/triviaLogic';
 import { RotateCcw, Play, Zap, Shield, Bolt, Target, ArrowRight } from 'lucide-react';
 
 function App() {
@@ -30,6 +31,9 @@ function App() {
   const [showRulesLegend, setShowRulesLegend] = useState(false);
   const [showPowerupInstructions, setShowPowerupInstructions] = useState<string | null>(null);
   const [lastShownMessages, setLastShownMessages] = useState<Set<string>>(new Set());
+  const [isTriviaModalOpen, setIsTriviaModalOpen] = useState(false);
+  const [triviaTile, setTriviaTile] = useState<TriviaTile | null>(null);
+  const [extraMove, setExtraMove] = useState(false);
 
   const triggerScreenShake = useCallback(() => {
     setIsScreenShaking(true);
@@ -37,7 +41,6 @@ function App() {
   }, []);
 
   const showEventMessage = useCallback((message: string) => {
-    // Prevent duplicate messages from spamming
     if (lastShownMessages.has(message)) {
       return;
     }
@@ -45,7 +48,6 @@ function App() {
     setLastShownMessages(prev => new Set([...prev, message]));
     setMessageQueue(prev => [...prev, message]);
     
-    // Clear message from spam prevention after 5 seconds
     setTimeout(() => {
       setLastShownMessages(prev => {
         const newSet = new Set(prev);
@@ -55,14 +57,12 @@ function App() {
     }, 5000);
   }, [lastShownMessages]);
 
-  // Process message queue to show one message at a time
   useEffect(() => {
     if (!currentMessage && messageQueue.length > 0) {
       const nextMessage = messageQueue[0];
       setCurrentMessage(nextMessage);
       setMessageQueue(prev => prev.slice(1));
       
-      // Remove message after 2 seconds
       setTimeout(() => {
         setCurrentMessage(null);
       }, 2000);
@@ -71,7 +71,6 @@ function App() {
 
   const handleShrink = useCallback(() => {
     setGameState((prevState: GameState) => {
-      // Only shrink every 20 turns
       if (prevState.turnCount % 20 === 0 && prevState.turnCount > 0) {
         return shrinkBoard(prevState);
       }
@@ -81,7 +80,6 @@ function App() {
 
   const handleRespawn = useCallback(() => {
     setGameState((prevState: GameState) => {
-      // Only respawn every 15 turns
       if (prevState.turnCount % 15 === 0 && prevState.turnCount > 0) {
         return respawnPiece(prevState);
       }
@@ -90,18 +88,15 @@ function App() {
   }, []);
 
   const handleTimerTick = useCallback(() => {
-    // Remove time-based processing - everything is now turn-based
   }, []);
 
   const handleShrinkAndRespawn = useCallback((gameState: GameState) => {
     let newState = gameState;
     
-    // Check for shrinking every 16 turns
     if (newState.turnCount % 16 === 0 && newState.turnCount > 0) {
       newState = shrinkBoard(newState);
     }
     
-    // Check for respawning every 15 turns
     if (newState.turnCount % 15 === 0 && newState.turnCount > 0) {
       newState = respawnPiece(newState);
     }
@@ -109,9 +104,6 @@ function App() {
     return newState;
   }, []);
 
-  // Removed time-based timer - everything is now turn-based
-
-  // Computer move logic
   useEffect(() => {
     if (gameState.currentPlayer === 'black' && gameState.gamePhase === 'playing') {
       const timer = setTimeout(() => {
@@ -120,28 +112,23 @@ function App() {
           const newGameState = makeMove(gameState, computerMove);
           const checkedGameState = checkGameOver(newGameState);
           
-          // Process turn-based mechanics after computer move
           const processedState = processGameMechanics(checkedGameState);
           
-          // Process post-move effects using dedicated hooks
           const { newGameState: finalState, events } = processPostMoveEffects(processedState, triggerScreenShake);
           
-          // Show event messages
           events.forEach(event => showEventMessage(event));
           
-          // Show turn message
           showEventMessage("YOUR TURN!");
           
           setGameState(finalState);
         } else {
-          // If no valid move, switch to white player to prevent getting stuck
           console.log('No valid computer move, switching to white player');
           setGameState(prevState => ({
             ...prevState,
             currentPlayer: 'white'
           }));
         }
-      }, 1500); // Increased timeout to 1.5 seconds
+      }, 1500);
 
       return () => clearTimeout(timer);
     }
@@ -152,12 +139,13 @@ function App() {
     if (gameState.gamePhase !== 'playing' || gameState.currentPlayer !== 'white') return;
 
     const piece = gameState.board[position.row][position.col];
+    
+    const currentPlayer = extraMove ? 'white' : gameState.currentPlayer;
 
-    // If no square selected, select this square if it has a white piece
     if (!selectedSquare) {
-      if (piece && piece.color === 'white') {
+      if (piece && piece.color === currentPlayer) {
         setSelectedSquare(position);
-        const moves = getLegalMoves(gameState.board, 'white', gameState.shrunkSquares)
+        const moves = getLegalMoves(gameState.board, currentPlayer, gameState.shrunkSquares)
           .filter(move => move.from.row === position.row && move.from.col === position.col)
           .map(move => move.to);
         setValidMoves(moves);
@@ -165,14 +153,12 @@ function App() {
       return;
     }
 
-    // If clicking the same square, deselect
     if (selectedSquare.row === position.row && selectedSquare.col === position.col) {
       setSelectedSquare(null);
       setValidMoves([]);
       return;
     }
 
-    // If clicking a valid move square, make the move
     const isValidMoveSquare = validMoves.some(
       move => move.row === position.row && move.col === position.col
     );
@@ -182,9 +168,12 @@ function App() {
     if (isValidMoveSquare) {
       const selectedPiece = gameState.board[selectedSquare.row][selectedSquare.col];
       if (selectedPiece) {
-        // Check if moving to a powerup square
         const powerUpOnSquare = gameState.powerUps.find(
           p => p.position.row === position.row && p.position.col === position.col
+        );
+
+        const triviaTileOnSquare = gameState.triviaTiles.find(
+            t => t.position.row === position.row && t.position.col === position.col
         );
 
         const move: Move = {
@@ -196,37 +185,45 @@ function App() {
 
         let newGameState = makeMove(gameState, move);
         
-        // Collect powerup if present
         if (powerUpOnSquare) {
           newGameState = collectPowerUp(newGameState, position, 'white');
           const description = getPowerUpDescription(powerUpOnSquare.type);
           showEventMessage(description);
           setShowPowerupInstructions(description);
           
-          // Auto-hide powerup instructions after 4 seconds
           setTimeout(() => setShowPowerupInstructions(null), 4000);
+        }
+
+        if (triviaTileOnSquare) {
+            fetchTriviaQuestion(position).then(question => {
+                if (question) {
+                    setTriviaTile(question);
+                    setIsTriviaModalOpen(true);
+                }
+            });
         }
         
         const checkedGameState = checkGameOver(newGameState);
         
-        // Process turn-based mechanics after each move
         const processedState = processGameMechanics(checkedGameState);
         
-        // Process post-move effects using dedicated hooks
         const { newGameState: finalState, events } = processPostMoveEffects(processedState, triggerScreenShake);
         
-        // Show event messages
         events.forEach(event => showEventMessage(event));
+        
+        if (extraMove) {
+          finalState.currentPlayer = 'white';
+          setExtraMove(false);
+        }
         
         setGameState(finalState);
       }
       setSelectedSquare(null);
       setValidMoves([]);
     } else {
-      // Select new square if it has a white piece
-      if (piece && piece.color === 'white') {
+      if (piece && piece.color === currentPlayer) {
         setSelectedSquare(position);
-        const moves = getLegalMoves(gameState.board, 'white', gameState.shrunkSquares)
+        const moves = getLegalMoves(gameState.board, currentPlayer, gameState.shrunkSquares)
           .filter(move => move.from.row === position.row && move.from.col === position.col)
           .map(move => move.to);
         setValidMoves(moves);
@@ -235,7 +232,40 @@ function App() {
         setValidMoves([]);
       }
     }
-  }, [gameState, selectedSquare, validMoves]);
+  }, [gameState, selectedSquare, validMoves, showEventMessage, extraMove]);
+
+  const handleTriviaAnswer = useCallback((isCorrect: boolean) => {
+    setIsTriviaModalOpen(false);
+    setTriviaTile(null);
+    if (isCorrect) {
+      showEventMessage("CORRECT! YOU GET AN EXTRA MOVE!");
+      setExtraMove(true);
+    } else {
+      showEventMessage("INCORRECT. NO REWARD.");
+    }
+  }, [showEventMessage]);
+
+  const handleForceTurn = useCallback(() => {
+    console.log('Force switching to white player');
+    setGameState(prevState => {
+      setSelectedSquare(null);
+      setValidMoves([]);
+      return {
+        ...prevState,
+        currentPlayer: 'white'
+      };
+    });
+  }, []);
+
+  const handleMoveAfterTrivia = useCallback((position: Position) => {
+    if (extraMove && gameState.currentPlayer === 'white') {
+      const piece = gameState.board[selectedSquare?.row || -1][selectedSquare?.col || -1];
+      if (piece && piece.color === 'white') {
+        handleSquareClick(position);
+        setExtraMove(false);
+      }
+    }
+  }, [extraMove, gameState, selectedSquare, handleSquareClick]);
 
   const resetGame = () => {
     setGameState(createInitialGameState());
@@ -245,7 +275,6 @@ function App() {
 
   return (
     <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 ${isScreenShaking ? 'screen-shake' : ''}`}>
-      {/* Single Event Message Overlay */}
       {currentMessage && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
           <div className="text-6xl md:text-8xl font-black text-white text-center event-message drop-shadow-2xl animate-pulse">
@@ -256,7 +285,6 @@ function App() {
         </div>
       )}
 
-      {/* Powerup Instructions Overlay */}
       {showPowerupInstructions && (
         <div className="fixed top-4 right-4 z-40 max-w-sm">
           <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-white p-4 rounded-lg shadow-2xl border-2 border-yellow-300">
@@ -315,18 +343,7 @@ function App() {
               
               {gameState.currentPlayer === 'black' && (
                 <button
-                  onClick={() => {
-                    console.log('Force switching to white player');
-                    setGameState(prevState => {
-                      // Reset selection and valid moves when forcing turn
-                      setSelectedSquare(null);
-                      setValidMoves([]);
-                      return {
-                        ...prevState,
-                        currentPlayer: 'white'
-                      };
-                    });
-                  }}
+                  onClick={handleForceTurn}
                   className="flex items-center gap-2 bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-700 hover:to-yellow-800 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg"
                 >
                   <Play className="w-5 h-5" />
@@ -361,13 +378,17 @@ function App() {
                 </button>
               )}
             </div>
-
+            
+            {extraMove && (
+              <div className="mt-4 text-center text-lg font-semibold text-green-400 animate-pulse">
+                You have an extra move!
+              </div>
+            )}
           </div>
 
           <div className="w-full max-w-sm">
             <GameInfo gameState={gameState} />
             
-            {/* Check Status Display */}
             {gameState.gamePhase === 'playing' && (
               <div className="mt-6 bg-white rounded-lg shadow-lg p-4">
                 <h3 className="font-bold text-gray-800 mb-3">Game Status</h3>
@@ -394,7 +415,6 @@ function App() {
               </div>
             )}
 
-            {/* Powerup Display */}
             {gameState.gamePhase === 'playing' && gameState.playerPowerUps.get('white') && (
               <div className="mt-6 bg-gradient-to-r from-yellow-100 to-yellow-200 rounded-lg shadow-lg p-4 border-2 border-yellow-400">
                 <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
@@ -448,10 +468,16 @@ function App() {
           </div>
         </div>
         
-        {/* Game Rules Legend Modal */}
         <GameRulesLegend 
           isOpen={showRulesLegend} 
           onClose={() => setShowRulesLegend(false)} 
+        />
+
+        <TriviaModal
+            isOpen={isTriviaModalOpen}
+            onClose={() => setIsTriviaModalOpen(false)}
+            triviaTile={triviaTile}
+            onAnswer={handleTriviaAnswer}
         />
       </div>
     </div>

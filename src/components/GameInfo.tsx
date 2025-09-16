@@ -95,7 +95,6 @@ export function GameInfo({ gameState }: GameInfoProps) {
         </div>
       )}
       
-      {/* Enhanced Power-up info */}
       <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3 border border-yellow-200">
         <div className="flex items-center gap-2 mb-2">
           <PowerUpIcon className="w-4 h-4 text-yellow-600" />
@@ -105,7 +104,6 @@ export function GameInfo({ gameState }: GameInfoProps) {
           {gameState.powerUps.length} available on board
         </div>
         
-        {/* Player power-up inventory */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-600">Your Power-up:</span>
@@ -137,18 +135,6 @@ export function GameInfo({ gameState }: GameInfoProps) {
           </div>
         </div>
       )}
-      
-      {/* Debug info */}
-      <div className="bg-gray-100 rounded-lg p-3 text-xs">
-        <div className="font-semibold text-gray-700 mb-2">Debug Info</div>
-        <div className="text-gray-600 space-y-1">
-          <div>Game Phase: {gameState.gamePhase}</div>
-          <div>Captured Pieces: {gameState.capturedPieces.length}</div>
-          <div>Power-ups: {gameState.powerUps.length}</div>
-          <div>Shrink Blocks: {gameState.shrinkBlocks.length}</div>
-          <div>Respawn Queue: {gameState.respawnQueue.length}</div>
-        </div>
-      </div>
     </div>
   );
 }

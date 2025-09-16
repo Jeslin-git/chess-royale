@@ -254,3 +254,16 @@
 .powerup-pickup {
   animation: pickupSparkles 0.6s ease-out forwards;
 }
+
+@keyframes triviaPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(66, 153, 225, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(66, 153, 225, 0);
+  }
+}
+
+.trivia-icon {
+  animation: triviaPulse 2s ease-in-out infinite;
+}
